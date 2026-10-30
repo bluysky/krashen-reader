@@ -183,6 +183,12 @@
       }
       .listen:hover{transform:translateY(-1px);}
       .listen.playing{background:var(--teal-deep);border-color:var(--teal-deep);}
+      .listen.playall{background:var(--teal);border-color:var(--teal-deep);}
+      .listen.playall.playing{background:var(--ochre);border-color:#a86e08;}
+      .chunk .w{border-bottom:2px dotted rgba(185,62,34,.5);border-radius:3px;padding:0 1px;cursor:pointer;}
+      .chunk .w:active{background:#ffe08a;}
+      .word-say{margin-top:10px;background:var(--teal);border:2px solid var(--teal-deep);color:#fff;border-radius:99px;padding:8px 18px;font-size:15px;font-weight:700;cursor:pointer;}
+      .g-base{font-size:13.5px;color:var(--ink-soft);margin:4px 0 0;}
       /* 안내 문구는 평소에는 비워 둔다 — 소리가 안 날 때만 한 줄로 나타난다 */
       .tts-note{font-size:12px;color:rgba(255,240,205,.85);text-align:center;margin:0;}
       .tts-note:empty{display:none;}
@@ -612,6 +618,10 @@
                 <svg width="19" height="19" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13l11-6.5z"/></svg>
                 <span id="listen-label">이야기 목소리로 듣기</span>
               </button>
+              <button type="button" class="listen playall" id="playall-btn" aria-label="이야기 전체 듣기">
+                <svg width="19" height="19" viewBox="0 0 24 24" fill="currentColor"><path d="M5 5.5v13l8-6.5z"/><path d="M13 5.5v13l8-6.5z"/></svg>
+                <span id="playall-label">이야기 전체 듣기</span>
+              </button>
             </div>
             <p class="tts-note" id="tts-note"></p>
           </div>
@@ -622,11 +632,11 @@
         <div class="guide" id="guide" role="dialog" aria-label="덩어리 뜻">
           <div class="guide-handle" aria-hidden="true"></div>
           <div class="guide-topbar">
-            <span class="guide-title">덩어리 뜻</span>
+            <span class="guide-title" id="guide-title">덩어리 뜻</span>
             <button type="button" class="sheet-close" id="guide-close" aria-label="뜻 팝업 닫기">닫기 <span class="x" aria-hidden="true">✕</span></button>
           </div>
           <div id="guide-body">
-            <div class="placeholder">덩어리를 누르면 쉬운 영어와 그림 힌트로 뜻을 짐작할 수 있어요. 틀려도 괜찮아요 — 유추하는 과정 자체가 습득입니다.</div>
+            <div class="placeholder">덩어리를 누르면 쉬운 영어와 그림 힌트로 뜻을 짐작할 수 있어요. 단어 하나를 누르면 그 단어의 뜻·발음·관련 단어도 볼 수 있어요. 틀려도 괜찮아요 — 유추하는 과정 자체가 습득입니다.</div>
           </div>
           <button type="button" class="sheet-close-bottom" id="guide-close-bottom" aria-label="뜻 팝업 닫기">닫기</button>
         </div>
@@ -1858,13 +1868,20 @@
           var b = document.createElement('button');
           b.type = 'button';
           b.className = 'chunk';
-          b.textContent = chunk.t;
+          chunk.t.split(' ').forEach(function (tok, wi) {
+            if (wi > 0) b.appendChild(document.createTextNode(' '));
+            var w = document.createElement('span');
+            w.className = 'w';
+            w.textContent = tok;
+            w.addEventListener('click', function (e) { e.stopPropagation(); openWord(tok, chunk); });
+            b.appendChild(w);
+          });
           b.setAttribute('aria-label', '덩어리 힌트 보기: ' + chunk.t);
           b.addEventListener('click', function () { openChunk(idx, b); });
           box.appendChild(b);
         });
 
-        $('guide-body').innerHTML = '<div class="placeholder">덩어리를 누르면 쉬운 영어와 그림 힌트로 뜻을 짐작할 수 있어요. 틀려도 괜찮아요 — 유추하는 과정 자체가 습득입니다.</div>';
+        $('guide-body').innerHTML = '<div class="placeholder">덩어리를 누르면 쉬운 영어와 그림 힌트로 뜻을 짐작할 수 있어요. 단어 하나를 누르면 그 단어의 뜻·발음·관련 단어도 볼 수 있어요. 틀려도 괜찮아요 — 유추하는 과정 자체가 습득입니다.</div>';
         $('guide').classList.remove('open');
         var bd0 = $('guide-backdrop');
         if (bd0) bd0.classList.remove('open');
@@ -1892,7 +1909,458 @@
         });
       }
 
+      /* ============ 단어 사전 — 덩어리 속 단어를 누르면 뜻·발음·관련 단어 ============ */
+      var WORD_DICT = {
+"a":["~은/는 (하나의)","어","an 하나, the 그"],
+"about":["~에 대해, ~쯤","어바웃","around 둘레에, of ~의"],
+"across":["~을 가로질러","어크로스","over 넘어, through 통해"],
+"after":["~ 뒤에, 다음에","애프터","before 전에, then 그다음"],
+"again":["다시, 또","어겐","once 한 번, repeat 반복하다"],
+"all":["모든, 전부","올","every 모든, whole 전체"],
+"an":["~은/는 (하나의)","언","a 하나, the 그"],
+"and":["그리고, ~와/과","앤드","but 하지만, or 또는"],
+"ant":["개미","앤트","insect 곤충, work 일하다"],
+"appeared":["나타났다 (appear의 과거)","어피어드","appear 나타나다, show 보이다"],
+"appear":["나타나다","어피어","come 오다, show 보이다"],
+"are":["~이다, ~있다","아","is 이다, was 였다"],
+"arms":["팔 (arm의 복수)","암즈","hands 손, legs 다리"],
+"as":["~처럼, ~할 때","애즈","like ~처럼, when ~할 때"],
+"asked":["물었다, 부탁했다 (ask의 과거)","아스크트","ask 묻다, answer 대답하다"],
+"ask":["묻다, 부탁하다","아스크","answer 대답하다, say 말하다"],
+"at":["~에서, ~에","앳","in 안에, on 위에"],
+"autumn":["가을","오텀","fall 가을, season 계절"],
+"away":["멀리, 저쪽으로","어웨이","go 가다, far 먼"],
+"baby":["아기","베이비","child 아이, young 어린"],
+"back":["뒤, 등, 돌아와서","백","behind 뒤에, front 앞"],
+"before":["~ 전에","비포","after 뒤에, early 이른"],
+"began":["시작했다 (begin의 과거)","비갠","begin 시작하다, start 시작하다"],
+"begged":["간청했다 (beg의 과거)","베그드","beg 빌다, ask 부탁하다"],
+"beg":["빌다, 간청하다","베그","ask 부탁하다, plead 애원하다"],
+"behind":["~ 뒤에","비하인드","back 뒤, front 앞"],
+"bells":["종, 방울 (bell의 복수)","벨즈","sound 소리, ring 울리다"],
+"big":["큰","빅","large 큰, small 작은"],
+"black":["검은","블랙","dark 어두운, white 흰"],
+"body":["몸","바디","leg 다리, arm 팔"],
+"bottom":["바닥, 아래","바텀","top 위, under 아래"],
+"brim":["가장자리, 끝까지 가득","브림","edge 가장자리, full 가득"],
+"brimming":["넘칠 듯 가득한","브리밍","full 가득한, pour 붓다"],
+"broken":["부러진, 망가진","브로큰","break 부러지다, fix 고치다"],
+"brother":["형, 오빠, 남동생","브라더","sister 자매, family 가족"],
+"brothers":["형제들","브라더즈","brother 형제, family 가족"],
+"but":["하지만","벗","and 그리고, however 그러나"],
+"by":["~ 옆에, ~로","바이","near 가까이, with 함께"],
+"came":["왔다 (come의 과거)","케임","come 오다, went 갔다"],
+"come":["오다","컴","go 가다, came 왔다"],
+"cannot":["~할 수 없다","캐낫","can 할 수 있다, could 할 수 있었다"],
+"can":["~할 수 있다","캔","cannot 할 수 없다, could 할 수 있었다"],
+"care":["돌보다, 신경 쓰다","케어","help 돕다, love 사랑하다"],
+"carries":["나른다 (carry의 현재형)","캐리즈","carry 나르다, bring 가져오다"],
+"cascaded":["폭포처럼 쏟아졌다","캐스케이디드","pour 쏟아지다, fall 떨어지다"],
+"cheek":["뺨, 볼","치크","face 얼굴, slap 따귀"],
+"clean":["깨끗한, 청소하다","클린","wash 씻다, dirty 더러운"],
+"coins":["동전들","코인즈","money 돈, gold 금"],
+"cold":["추운, 차가운","콜드","hot 더운, warm 따뜻한"],
+"coming":["오고 있는 (come의 진행형)","커밍","come 오다, near 가까운"],
+"consumed":["다 태워 버린, 소모한","컨슘드","burn 타다, eat 먹다"],
+"could":["~할 수 있었다 (can의 과거)","쿠드","can 할 수 있다, would ~할 것이다"],
+"cow":["소","카우","animal 동물, milk 우유"],
+"cried":["울었다, 외쳤다 (cry의 과거)","크라이드","cry 울다, tears 눈물"],
+"cry":["울다, 외치다","크라이","tears 눈물, wept 울었다"],
+"cruel":["잔인한","크루얼","kind 친절한, mean 못된"],
+"cut":["자르다, 베다","컷","saw 톱, split 쪼개다"],
+"daughter":["딸","도터","son 아들, mother 어머니"],
+"day":["날, 하루","데이","night 밤, morning 아침"],
+"days":["날들","데이즈","day 날, time 시간"],
+"dazzled":["눈이 부신","대즐드","shine 빛나다, bright 밝은"],
+"dazzling":["눈부신","대즐링","bright 밝은, shining 빛나는"],
+"desperate":["필사적인, 절박한","데스퍼릿","hope 희망, beg 빌다"],
+"determined":["결심한, 단단히 마음먹은","디터민드","steady 꾸준한, decide 결정하다"],
+"died":["죽었다 (die의 과거)","다이드","die 죽다, live 살다"],
+"dinner":["저녁 식사","디너","food 음식, feast 잔치"],
+"do":["하다","두","make 만들다, work 일하다"],
+"does":["한다 (do의 3인칭 현재형)","더즈","do 하다, is 이다"],
+"dress":["드레스, 옷","드레스","shoes 신발, silk 비단"],
+"dropped":["떨어뜨렸다 (drop의 과거)","드랍트","fall 떨어지다, pick up 줍다"],
+"drove":["몰았다 (drive의 과거)","드로브","go 가다, cow 소"],
+"dusk":["해 질 녘, 황혼","더스크","evening 저녁, night 밤"],
+"embraced":["껴안았다","임브레이스트","hug 안다, together 함께"],
+"embroidered":["수를 놓은","임브로이더드","silk 비단, pretty 예쁜"],
+"enormous":["엄청나게 큰","이노머스","giant 거대한, big 큰"],
+"entire":["전체의, 온","인타이어","whole 전체, all 모든"],
+"ever":["지금까지, 언젠가","에버","never 결코 ~않다, always 항상"],
+"every":["모든, 매~","에브리","all 모든, each 각각"],
+"everything":["모든 것","에브리띵","all 전부, thing 것"],
+"faced":["마주했다, 향했다","페이스트","face 얼굴, meet 만나다"],
+"fall":["떨어지다","폴","fell 떨어졌다, drop 떨어뜨리다"],
+"family":["가족","패밀리","brother 형제, mother 어머니"],
+"fast":["빠른, 빨리","패스트","quick 재빠른, slow 느린"],
+"feast":["잔치, 진수성찬","피스트","dinner 저녁, food 음식"],
+"feasted":["잔치를 벌였다, 실컷 먹었다","피스티드","eat 먹다, feast 잔치"],
+"fell":["떨어졌다 (fall의 과거)","펠","fall 떨어지다, dropped 떨어뜨렸다"],
+"field":["밭, 들판","필드","farm 농장, yard 마당"],
+"fill":["채우다, 가득 차다","필","full 가득한, brim 가장자리"],
+"find":["찾다, 발견하다","파인드","look 보다, found 찾았다"],
+"finish":["끝, 결승선","피니시","end 끝, race 경주"],
+"first":["먼저, 첫 번째","퍼스트","then 그다음, start 시작"],
+"fits":["꼭 맞는다 (fit의 현재형)","핏츠","fit 맞다, shoe 신발"],
+"fitted":["맞춰 본, 꼭 맞는","피티드","try 신어 보다, size 크기"],
+"fled":["달아났다 (flee의 과거)","플레드","run 달리다, away 멀리"],
+"fleeing":["달아나는 중","플리잉","flee 달아나다, escape 도망치다"],
+"flew":["날았다 (fly의 과거)","플루","fly 날다, bird 새"],
+"flock":["(새·양의) 떼","플락","group 무리, sparrows 참새들"],
+"flood":["홍수","플러드","water 물, rain 비"],
+"flower":["꽃","플라워","tree 나무, pretty 예쁜"],
+"food":["음식, 먹이","푸드","eat 먹다, hungry 배고픈"],
+"foot":["발","풋","shoe 신발, leg 다리"],
+"for":["~을 위해, ~ 동안","포","to ~에게, of ~의"],
+"forgave":["용서했다 (forgive의 과거)","포게이브","forgive 용서하다, kind 친절한"],
+"fortune":["행운, 큰 재물","포춘","luck 운, treasure 보물"],
+"found":["찾았다 (find의 과거)","파운드","find 찾다, lost 잃었다"],
+"fox":["여우","팍스","animal 동물, grapes 포도"],
+"fractured":["부러진, 금이 간","프랙처드","broken 부러진, leg 다리"],
+"gave":["주었다 (give의 과거)","게이브","give 주다, shared 나눴다"],
+"give":["주다","기브","take 받다, gave 주었다"],
+"gentle":["다정한, 부드러운","젠틀","kind 친절한, soft 부드러운"],
+"get":["얻다, 받다, 닿다","겟","have 가지다, take 가져가다"],
+"giant":["거대한, 거인","자이언트","enormous 엄청나게 큰, big 큰"],
+"girl":["소녀","걸","young 어린, daughter 딸"],
+"go":["가다","고","come 오다, went 갔다"],
+"gold":["금, 황금","골드","coins 동전, treasure 보물"],
+"gourd":["박 (열매)","고어드","gourds 박들, seed 씨앗"],
+"gourds":["박들","고어즈","gourd 박, magic 신기한"],
+"grain":["곡식, 낟알","그레인","rice 쌀, seed 씨앗"],
+"grapes":["포도","그레이프스","grape 포도 한 알, vine 포도나무"],
+"grasshopper":["베짱이, 메뚜기","그래스하퍼","ant 개미, sing 노래하다"],
+"grateful":["고마워하는","그레이트풀","thanks 고마움, kind 친절한"],
+"gratitude":["고마운 마음, 감사","그래티튜드","thanks 감사, grateful 고마운"],
+"greed":["욕심","그리드","greedy 욕심 많은, want 원하다"],
+"greedy":["욕심 많은","그리디","greed 욕심, kind 친절한(반대)"],
+"grew":["자랐다 (grow의 과거)","그루","grow 자라다, planted 심었다"],
+"grudge":["원한, 앙심","그러지","angry 화난, forgive 용서하다"],
+"guest":["손님","게스트","welcomed 맞이했다, house 집"],
+"had":["가졌다 (have의 과거)","해드","have 가지다, was 였다"],
+"handful":["한 줌, 한 웅큼","핸드풀","hands 손, grain 곡식"],
+"hands":["손들 (hand의 복수)","핸즈","hand 손, arms 팔"],
+"happily":["행복하게, 기쁘게","해필리","happy 행복한, together 함께"],
+"hard":["열심히, 단단한, 힘든","하드","work 일하다, difficult 어려운"],
+"hardship":["고생, 어려움","하드십","hard 힘든, poor 가난한"],
+"has":["가지다 (have의 3인칭 현재형)","해즈","have 가지다, had 가졌다"],
+"have":["가지다, ~가 있다","해브","has 가지다, get 얻다"],
+"he":["그 (남자)","히","she 그녀, him 그를"],
+"health":["건강","헬스","well 건강한, strong 튼튼한"],
+"hearted":["~한 마음을 가진 (kind-hearted 등에서)","하티드","kind 친절한, heart 마음"],
+"held":["잡았다, 들었다 (hold의 과거)","헬드","hold 잡다, hand 손"],
+"hold":["잡다, 들다","홀드","hand 손, take 잡다"],
+"help":["돕다","헬프","kind 친절한, rescue 구하다"],
+"helped":["도왔다 (help의 과거)","헬프트","help 돕다, rescued 구했다"],
+"helps":["돕는다 (help의 현재형)","헬프스","help 돕다, kind 친절한"],
+"her":["그녀의, 그녀를","허","she 그녀, his 그의"],
+"heungbu":["흥부 (인물 이름)","흥부","Nolbu 놀부, brother 형제"],
+"high":["높은, 높이","하이","tall 높은, up 위"],
+"him":["그를, 그에게","힘","he 그, her 그녀를"],
+"himself":["그 자신, 스스로","힘셀프","itself 그것 자체, alone 혼자"],
+"his":["그의","히즈","her 그녀의, my 나의"],
+"hit":["때리다, 치다","힛","slap 따귀, struck 쳤다"],
+"holding":["잡고 있는, 들고 있는","홀딩","hold 잡다, hands 손"],
+"hole":["구멍","홀","roof 지붕, dig 파다"],
+"home":["집, 집으로","홈","house 집, family 가족"],
+"hopped":["깡충 뛰었다","합트","jump 뛰다, rabbit 토끼"],
+"house":["집","하우스","home 집, roof 지붕"],
+"humble":["겸손한, (신분이) 낮은","험블","kind 친절한, proud 자랑스러운(반대)"],
+"humiliated":["창피를 당한, 굴욕적인","휴밀리에이티드","shame 창피, slap 따귀"],
+"humility":["겸손","휴밀리티","humble 겸손한, kind 친절한"],
+"hungry":["배고픈","헝그리","food 음식, cold 추운"],
+"husked":["(쌀을) 찧은, 껍질을 벗긴","허스크트","rice 쌀, grain 곡식"],
+"impossible":["불가능한","임파서블","possible 가능한, cannot 할 수 없다"],
+"in":["~ 안에, ~에서","인","on 위에, at ~에서"],
+"inheritance":["유산, 물려받은 재산","인헤리턴스","fortune 재산, father 아버지"],
+"into":["~ 안으로","인투","in 안에, out 밖으로"],
+"is":["~이다, ~있다","이즈","are 이다, was 였다"],
+"it":["그것","잇","its 그것의, this 이것"],
+"its":["그것의","이츠","it's 그것은 ~이다, of ~의"],
+"itself":["그것 자체, 스스로","잇셀프","himself 그 자신, alone 혼자"],
+"jar":["항아리","자","hole 구멍, water 물"],
+"jewels":["보석들","주얼즈","gold 금, treasure 보물"],
+"jump":["뛰다, 점프","점프","hop 깡충 뛰다, run 달리다"],
+"jumps":["뛴다 (jump의 현재형)","점프스","jump 뛰다, runs 달린다"],
+"kind":["친절한, 종류","카인드","gentle 다정한, cruel 잔인한(반대)"],
+"kongjwi":["콩쥐 (인물 이름)","콩쥐","Patjwi 팥쥐, stepsister 의붓언니"],
+"last":["마지막, 지난","라스트","first 첫, end 끝"],
+"leave":["떠나다, 남기다","리브","go 가다, stay 머물다"],
+"leaving":["떠나는 중, 맡기고","리빙","leave 떠나다, go 가다"],
+"left":["남은, 떠났다 (leave의 과거)","레프트","leave 떠나다, went 갔다"],
+"leg":["다리","레그","foot 발, broken 부러진"],
+"let's":["우리 ~하자","레츠","together 함께, play 놀자"],
+"like":["~처럼, 좋아하다","라이크","as ~처럼, love 사랑하다"],
+"little":["작은, 어린","리틀","small 작은, young 어린"],
+"lived":["살았다 (live의 과거)","리브드","live 살다, house 집"],
+"look":["보다, ~하게 보이다","룩","see 보다, saw 보았다"],
+"looked":["보았다 (look의 과거)","룩트","look 보다, saw 보았다"],
+"lost":["잃어버린 (lose의 과거)","로스트","found 찾은, shoe 신발"],
+"made":["만들었다 (make의 과거)","메이드","make 만들다, did 했다"],
+"make":["만들다","메이크","made 만들었다, do 하다"],
+"magic":["마법의, 신기한","매직","mysterious 신비한, gourd 박"],
+"magistrate":["원님, 사또","매지스트레이트","wedding 혼인, village 마을"],
+"maiden":["아가씨, 젊은 여자","메이든","girl 소녀, young 어린"],
+"married":["결혼한","매리드","wedding 결혼식, wife 아내"],
+"mean":["못된, 심술궂은","민","cruel 잔인한, kind 친절한(반대)"],
+"moral":["교훈","모럴","lesson 교훈, story 이야기"],
+"mother":["어머니","마더","stepmother 새어머니, family 가족"],
+"mountain":["산","마운틴","village 마을, high 높은"],
+"moved":["이사했다, 감동했다, 움직였다","무브드","move 움직이다, house 집"],
+"mysterious":["신비한","미스티리어스","magic 마법의, strange 이상한"],
+"nap":["낮잠","냅","sleep 잠, tree 나무"],
+"no":["아니요, 없는","노","not ~않다, yes 네"],
+"nolbu":["놀부 (인물 이름)","놀부","Heungbu 흥부, greedy 욕심 많은"],
+"not":["~않다, 아니다","낫","no 아니요, never 결코 않다"],
+"now":["지금, 이제","나우","then 그때, today 오늘"],
+"nursed":["간호했다, 돌봐 주었다","너스트","care 돌보다, helped 도왔다"],
+"of":["~의","오브","from ~에서, to ~에게"],
+"off":["떨어져, 벗겨져","오프","on 위에, away 멀리"],
+"oh":["오, 아 (감탄)","오","wow 와, ah 아"],
+"on":["~ 위에","온","in 안에, up 위에"],
+"once":["한 번, 옛날에 한 번","원스","one 하나, again 다시"],
+"one":["하나, 한 사람","원","two 둘, single 하나의"],
+"onto":["~ 위쪽으로","온투","on 위에, into 안으로"],
+"open":["열린, 열다","오픈","close 닫다, hole 구멍"],
+"ordered":["명령했다, 시켰다","오더드","order 명령하다, task 일거리"],
+"out":["밖으로, 나와서","아웃","in 안으로, into 안으로"],
+"over":["~ 위에, 넘어서","오버","across 가로질러, under 아래"],
+"owner":["주인","오너","shoe 신발, house 집"],
+"paddle":["밥주걱, 노","패들","rice 밥, slap 치다"],
+"part":["부분, 몫, 갈라지다","파트","whole 전체, brothers 형제"],
+"pass":["지나치다, 건네다","패스","walk 걷다, come 오다"],
+"passed":["지나쳤다 (pass의 과거)","패스트","pass 지나치다, went 갔다"],
+"passes":["지나친다 (pass의 현재형)","패시즈","pass 지나치다, walks 걷는다"],
+"patjwi":["팥쥐 (인물 이름)","팥쥐","Kongjwi 콩쥐, stepsister 의붓언니"],
+"penniless":["무일푼의, 돈 한 푼 없는","페닐리스","poor 가난한, money 돈"],
+"perfect":["완벽한","퍼펙트","fits 꼭 맞는, pretty 예쁜"],
+"perfectly":["완벽하게","퍼펙틀리","perfect 완벽한, well 잘"],
+"pinched":["꼬집힌, (볼이) 집힌","핀치트","cheek 뺨, slap 따귀"],
+"planted":["심었다 (plant의 과거)","플랜티드","plant 심다, seed 씨앗"],
+"play":["놀다, 연주하다","플레이","plays 놀다, work 일하다"],
+"plays":["논다 (play의 현재형)","플레이즈","play 놀다, sings 노래한다"],
+"pleaded":["애원했다, 간청했다","플리디드","begged 빌었다, asked 부탁했다"],
+"plow":["쟁기, 밭을 갈다","플라우","field 밭, furrow 밭고랑"],
+"plowed":["밭을 갈았다","플라우드","plow 쟁기, field 밭"],
+"plugged":["막았다, 틀어막았다","플러그드","hole 구멍, stones 돌"],
+"plump":["통통한, 토실토실한","플럼프","fat 통통한, handful 한 줌"],
+"pointed":["가리켰다","포인티드","point 가리키다, looked 보았다"],
+"pointing":["가리키고 있는","포인팅","pointed 가리켰다, at ~를"],
+"poor":["가난한, 불쌍한","푸어","penniless 무일푼의, rich 부유한(반대)"],
+"pour":["붓다, 쏟아지다","포어","water 물, full 가득"],
+"poured":["쏟아졌다, 부었다 (pour의 과거)","포어드","pour 붓다, cascaded 쏟아졌다"],
+"pours":["쏟아진다 (pour의 현재형)","포어즈","pour 붓다, waterfall 폭포"],
+"pretty":["예쁜","프리티","beautiful 아름다운, dress 옷"],
+"pushed":["밀었다 (push의 과거)","푸시트","push 밀다, fell 떨어졌다"],
+"rabbit":["토끼","래빗","turtle 거북이, fast 빠른"],
+"race":["경주","레이스","run 달리다, win 이기다"],
+"ran":["달렸다 (run의 과거)","랜","run 달리다, went 갔다"],
+"rang":["울렸다 (ring의 과거)","랭","bells 종, sound 소리"],
+"reconciliation":["화해","레컨실리에이션","forgave 용서했다, brothers 형제"],
+"refused":["거절했다","리퓨즈드","refuse 거절하다, no 아니요"],
+"rescued":["구해 주었다","레스큐드","help 도왔다, saved 구했다"],
+"returned":["돌아왔다, 돌려주었다","리턴드","came 왔다, back 돌아와서"],
+"rice":["쌀, 밥","라이스","grain 곡식, paddle 밥주걱"],
+"ring":["울리다, 종소리","링","bells 종, sound 소리"],
+"roof":["지붕","루프","thatched 초가, house 집"],
+"rose":["올라갔다, 장미","로즈","up 위로, grew 자랐다"],
+"ruin":["망치다, 파멸","루인","broken 망가진, greed 욕심"],
+"run":["달리다","런","walk 걷다, jump 뛰다"],
+"runs":["달린다 (run의 현재형)","런즈","run 달리다, walks 걷는다"],
+"sacks":["자루들, 포대","색스","rice 쌀, grain 곡식"],
+"said":["말했다 (say의 과거)","세드","say 말하다, says 말해요"],
+"sat":["앉았다 (sit의 과거)","샛","sit 앉다, stood 섰다"],
+"saw":["보았다 (see의 과거), 톱","소","see 보다, looked 보았다"],
+"sawed":["톱질했다","소드","saw 톱, cut 잘랐다"],
+"say":["말하다","세이","says 말해요, said 말했다"],
+"says":["말해요 (say의 현재형)","세즈","say 말하다, said 말했다"],
+"see":["보다","시","look 보다, watch 지켜보다"],
+"seed":["씨앗","시드","planted 심었다, gourd 박"],
+"seeds":["씨앗들","시즈","seed 씨앗, grain 낟알"],
+"sees":["본다 (see의 현재형)","시즈","see 보다, looks 본다"],
+"seized":["덥석 잡았다, 빼앗았다","시즈드","grab 잡다, took 가져갔다"],
+"sent":["보냈다 (send의 과거)","센트","send 보내다, away 멀리"],
+"servant":["하인, 일꾼","서번트","magistrate 원님, task 일"],
+"settled":["자리 잡았다, 해결됐다","세틀드","lived 살았다, home 집"],
+"share":["나누다, 함께 쓰다","셰어","give 주다, kind 친절한"],
+"shared":["나눠 가졌다 (share의 과거)","셰어드","share 나누다, gave 주었다"],
+"shares":["나눠 준다 (share의 현재형)","셰어즈","share 나누다, kind 친절한"],
+"she":["그녀","쉬","her 그녀의, he 그"],
+"shining":["빛나는","샤이닝","bright 밝은, dazzling 눈부신"],
+"shoe":["신발 한 짝, 구두","슈","shoes 신발, fits 맞는다"],
+"shoes":["신발","슈즈","shoe 신발 한 짝, foot 발"],
+"silk":["비단, 실크","실크","dress 옷, embroidered 수놓은"],
+"sing":["노래하다","싱","song 노래, play 놀다"],
+"single":["단 하나의, 혼자인","싱글","one 하나, only 오직"],
+"sings":["노래한다 (sing의 현재형)","싱즈","sing 노래하다, plays 논다"],
+"slap":["따귀, 철썩 때리기","슬랩","hit 치다, cheek 뺨"],
+"sleep":["자다","슬립","nap 낮잠, wake 깨다"],
+"sleeping":["자고 있는 (sleep의 진행형)","슬리핑","sleep 자다, nap 낮잠"],
+"sleeps":["잔다 (sleep의 현재형)","슬립스","sleep 자다, nap 낮잠"],
+"slipped":["미끄러졌다, 빠져나갔다","슬립트","fall 떨어지다, shoe 신발"],
+"slow":["느린, 천천히","슬로우","steady 꾸준한, fast 빠른(반대)"],
+"small":["작은","스몰","little 작은, big 큰(반대)"],
+"snapped":["탁 부러졌다, 끊어졌다","스냅트","broken 부러진, cut 잘린"],
+"so":["그래서, 그렇게, 매우","소","then 그래서, very 매우"],
+"some":["몇몇, 약간의","썸","a 조금, many 많은"],
+"soon":["곧, 머지않아","순","now 지금, later 나중에"],
+"sour":["신, 시큼한","사워","grapes 포도, sweet 달콤한(반대)"],
+"sparrows":["참새들","스패로우즈","sparrow 참새, flock 떼"],
+"splinted":["부목을 댄","스플린티드","leg 다리, broken 부러진"],
+"split":["쪼개다, 갈라지다","스플릿","cut 자르다, gourd 박"],
+"spoiled":["버릇없는, 상한","스포일드","greedy 욕심 많은, bad 나쁜"],
+"sprawled":["팔다리를 뻗고 누운","스프롤드","lying 누운, fell 넘어진"],
+"stand":["서다","스탠드","stood 서 있었다, sit 앉다"],
+"starving":["굶주리는","스타빙","hungry 배고픈, poor 가난한"],
+"steady":["꾸준한, 흔들림 없는","스테디","slow 느린, wins 이긴다"],
+"stepmother":["새어머니, 계모","스텝마더","mother 어머니, cruel 잔인한"],
+"stepping":["딛고 오르는, 밟는","스테핑","steps 계단, stones 돌"],
+"stepsister":["의붓언니·동생, 이복자매","스텝시스터","sister 자매, Patjwi 팥쥐"],
+"sticky":["끈적끈적한","스티키","rice 밥, hands 손"],
+"stones":["돌들","스톤즈","stone 돌, mountain 산"],
+"stood":["서 있었다 (stand의 과거)","스투드","stand 서다, sat 앉았다"],
+"stop":["멈추다, 그만두다","스탑","go 가다, start 시작하다"],
+"struck":["쳤다, 때렸다 (strike의 과거)","스트럭","hit 쳤다, slap 따귀"],
+"summer":["여름","서머","winter 겨울, hot 더운"],
+"swallow":["제비","스왈로우","bird 새, leg 다리"],
+"take":["가져가다, 잡다","테이크","give 주다, took 가져갔다"],
+"task":["일거리, 과제","태스크","work 일, ordered 시켰다"],
+"taught":["가르쳐 주었다 (teach의 과거)","토트","teach 가르치다, learn 배우다"],
+"teach":["가르치다","티치","learn 배우다, taught 가르쳤다"],
+"tears":["눈물","티어즈","cried 울었다, wept 울었다"],
+"tended":["보살폈다, 돌봤다","텐디드","care 돌보다, field 밭"],
+"thanks":["고마움, 감사","땡크스","gratitude 감사, grateful 고마운"],
+"thatched":["초가의, 짚으로 인","대치트","roof 지붕, house 집"],
+"the":["그 (정해진 것 앞에)","더","a 하나, this 이것"],
+"then":["그다음, 그때","덴","first 먼저, after 뒤에"],
+"they":["그들, 그 사람들","데이","we 우리, them 그들을"],
+"things":["것들, 물건들","띵즈","thing 것, everything 모든 것"],
+"this":["이것, 이","디스","that 저것, it 그것"],
+"though":["~이지만, 비록 ~라도","도우","but 하지만, even ~조차"],
+"tiny":["아주 작은","타이니","small 작은, little 작은"],
+"to":["~에게, ~로, ~하기 위해","투","for ~위해, from ~에서"],
+"toad":["두꺼비","토드","frog 개구리, helped 도왔다"],
+"together":["함께","투게더","alone 혼자, family 가족"],
+"too":["너무, ~도 또한","투","also 또한, very 매우"],
+"took":["가져갔다 (take의 과거)","툭","take 가져가다, gave 주었다"],
+"top":["위, 꼭대기","탑","bottom 아래, high 높은"],
+"transformed":["변신했다, 완전히 바뀌었다","트랜스폼드","change 바뀌다, magic 마법"],
+"treasure":["보물","트레저","gold 금, jewels 보석"],
+"treated":["대접했다, 대했다","트리티드","kind 친절한, cruel 잔인한"],
+"tree":["나무","트리","flower 꽃, under 아래"],
+"tried":["해 보았다, 노력했다 (try의 과거)","트라이드","try 해보다, jumps 뛰다"],
+"try":["해 보다, 노력하다","트라이","tried 해보았다, do 하다"],
+"turtle":["거북이","터틀","rabbit 토끼, slow 느린"],
+"under":["~ 아래에","언더","over 위에, tree 나무"],
+"until":["~할 때까지","언틸","to ~까지, when ~할 때"],
+"up":["위로, 일어나","업","down 아래로, high 높이"],
+"village":["마을","빌리지","town 읍, mountain 산"],
+"vine":["덩굴, 포도나무","바인","grapes 포도, tree 나무"],
+"voice":["목소리","보이스","sing 노래, says 말한다"],
+"walk":["걷다","워크","run 달리다, pass 지나치다"],
+"walks":["걷는다 (walk의 현재형)","웍스","walk 걷다, runs 달린다"],
+"was":["~였다, ~있었다","워즈","is 이다, were 였다(복수)"],
+"water":["물","워터","waterfall 폭포, flood 홍수"],
+"waterfall":["폭포","워터폴","water 물, mountain 산"],
+"we":["우리","위","they 그들, us 우리를"],
+"wedding":["결혼식, 혼인","웨딩","married 결혼한, magistrate 원님"],
+"welcomed":["맞이했다, 환영했다","웰컴드","guest 손님, kind 친절한"],
+"went":["갔다 (go의 과거)","웬트","go 가다, came 왔다"],
+"wept":["울었다 (weep의 과거)","웹트","cried 울었다, tears 눈물"],
+"were":["~였다, ~있었다 (복수·과거)","워","was 였다, are 이다"],
+"when":["~할 때, 언제","웬","while ~하는 동안, then 그때"],
+"while":["~하는 동안","와일","when ~할 때, during ~동안"],
+"who":["누구, ~하는 사람","후","that ~인, people 사람들"],
+"whole":["전체의, 온","홀","entire 전체, all 모든"],
+"wife":["아내","와이프","husband 남편, married 결혼한"],
+"win":["이기다","윈","race 경주, lose 지다"],
+"wins":["이긴다 (win의 현재형)","윈즈","win 이기다, race 경주"],
+"winter":["겨울","윈터","summer 여름, cold 추운"],
+"with":["~와 함께, ~로(써)","위드","and 그리고, without 없이"],
+"work":["일, 일하다","워크","works 일한다, play 놀다"],
+"works":["일한다 (work의 현재형)","웍스","work 일하다, hard 열심히"],
+"wow":["와! (감탄)","와우","oh 오, surprise 놀라움"],
+"yard":["마당","야드","house 집, field 밭"],
+"yet":["아직, 그러나","옛","still 아직, but 그러나"],
+"young":["어린, 젊은","영","old 나이 든, little 작은"],
+"yummy":["맛있겠다! 냠냠","야미","food 음식, grapes 포도"],
+"hmph":["흥! (콧방귀 소리)","험프","sour 신, angry 화난"]
+,
+"from":["~에서, ~부터","프럼","to ~에게, of ~의"],
+"full":["가득한, 배부른","풀","brimming 넘치는, empty 빈"],
+"furrow":["밭고랑","퍼로우","field 밭, plow 쟁기"],
+"cold-hearted":["매정한, 냉정한","콜드-하티드","cruel 잔인한, kind-hearted 친절한"],
+"kind-hearted":["마음씨 착한, 친절한","카인드-하티드","kind 친절한, gentle 다정한"]
+      };
+      function cleanWord(tok) { return String(tok).replace(/^[^A-Za-z]+|[^A-Za-z]+$/g, ''); }
+      function wordEntry(key) {
+        if (!key) return null;
+        if (WORD_DICT[key]) return { e: WORD_DICT[key], base: key };
+        var tries = [];
+        if (key.slice(-2) === "'s") tries.push(key.slice(0, -2));
+        if (key.slice(-1) === 's') tries.push(key.slice(0, -1));
+        if (key.slice(-2) === 'es') tries.push(key.slice(0, -2));
+        if (key.slice(-3) === 'ies') tries.push(key.slice(0, -3) + 'y');
+        if (key.slice(-3) === 'ing') { tries.push(key.slice(0, -3)); tries.push(key.slice(0, -3) + 'e'); }
+        if (key.slice(-2) === 'ed') { tries.push(key.slice(0, -2)); tries.push(key.slice(0, -1)); }
+        for (var i = 0; i < tries.length; i++) {
+          if (WORD_DICT[tries[i]]) return { e: WORD_DICT[tries[i]], base: tries[i] };
+        }
+        return null;
+      }
+      function openWord(tok, chunk) {
+        var disp = cleanWord(tok);
+        if (!disp) return;
+        var key = disp.toLowerCase();
+        var found = wordEntry(key);
+        $('guide-title').textContent = '단어 뜻';
+        var all = document.querySelectorAll('.chunk');
+        for (var i = 0; i < all.length; i++) all[i].classList.remove('active');
+        var html = '<div class="g-top"><span class="g-cue" aria-hidden="true">🔤</span>' +
+          '<div class="g-en-wrap"><p class="g-label g-label-en">영어 단어</p>' +
+          '<div class="g-en">&ldquo;' + disp + '&rdquo;</div></div></div>';
+        if (found) {
+          html += '<div class="g-meaning"><p class="g-label g-label-ko">한글 뜻</p>' +
+            '<div class="g-ko">' + found.e[0] + '</div>' +
+            (found.base !== key ? '<p class="g-base">기본형: ' + found.base + '</p>' : '') + '</div>' +
+            '<div class="g-section"><p class="g-label g-label-easy">발음</p>' +
+            '<p class="g-easy">' + found.e[1] + '</p>' +
+            '<button type="button" class="word-say" id="word-say-btn">🔊 단어 소리 듣기</button></div>' +
+            '<div class="g-section"><p class="g-label g-label-note">관련 단어</p>' +
+            '<p class="g-easy">' + found.e[2] + '</p></div>';
+        } else {
+          html += '<div class="g-meaning"><p class="g-label g-label-ko">한글 뜻</p>' +
+            '<div class="g-ko">아직 단어장에 없는 단어예요</div></div>' +
+            '<div class="g-section"><p class="g-label g-label-easy">발음</p>' +
+            '<p class="g-easy">문장 듣기에서 전체 발음을 확인해 보세요.</p>' +
+            '<button type="button" class="word-say" id="word-say-btn">🔊 단어 소리 듣기</button></div>';
+        }
+        html += '<div class="g-section"><p class="g-label g-label-note">이 문장에서는</p>' +
+          '<div class="g-note-wrap"><p class="g-note">&ldquo;' + chunk.t + '&rdquo;<br>' + chunk.ko + '</p></div></div>';
+        $('guide-body').innerHTML = html;
+        $('guide').classList.add('open');
+        $('guide-backdrop').classList.add('open');
+        var gb = $('guide-body');
+        if (gb) gb.scrollTop = 0;
+        var guideEl = $('guide');
+        if (guideEl) guideEl.scrollTop = 0;
+        var sayBtn = $('word-say-btn');
+        if (sayBtn) sayBtn.addEventListener('click', function () { speakWord(disp); });
+      }
+      function speakWord(w) {
+        try {
+          if (!('speechSynthesis' in window)) return;
+          window.speechSynthesis.cancel();
+          var u = new SpeechSynthesisUtterance(w);
+          u.lang = 'en-US';
+          u.rate = 0.85;
+          window.speechSynthesis.speak(u);
+        } catch (e) {}
+      }
+
       function openChunk(idx, btn) {
+        $('guide-title').textContent = '덩어리 뜻';
         var v = currentVariant();
         var c = v.chunks[idx];
         var all = document.querySelectorAll('.chunk');
@@ -1945,6 +2413,17 @@
          옮기거나 레벨을 바꾸면 소리가 정리된다. */
       var narrator = null;
       var narratorTimer = null;
+      /* 전체 듣기: 장면이 끝나면 다음 장면을 자동으로 이어 재생한다.
+         자막 따라가기는 장면별 재생 타이머가 그대로 담당하고, 사용자가
+         장면을 옮기거나 레벨·이야기를 바꾸면 전체 듣기는 해제된다. */
+      var playAll = false;
+      var playAllTimer = null;
+      function setPlayAll(on) {
+        playAll = on;
+        $('playall-btn').classList.toggle('playing', on);
+        $('playall-label').textContent = on ? '전체 듣기 멈추기' : '이야기 전체 듣기';
+        if (!on && playAllTimer) { clearTimeout(playAllTimer); playAllTimer = null; }
+      }
 
       /* ============ 따라 읽기 하이라이트 ============ */
       /* 장면 음성은 문장 전체가 한 클립이라, 클립 안에서의 강조 이동은
@@ -2066,6 +2545,7 @@ var AUDIO_DATA = {
         return 'assets/audio/' + id + '.mp3';
       }
       function speak() {
+        setPlayAll(false);
         playSentence(audioUrl(sentenceId()), false);
       }
       function teardownPlayer(player) {
@@ -2090,7 +2570,20 @@ var AUDIO_DATA = {
         // 오지 않는 브라우저에서도 감시 타이머가 이 함수를 불러주므로,
         // 끝난 요소가 다음 클릭을 가로막을 수 없다.
         if (player !== narrator) return;
+        var storyNow = STORIES[state.story];
+        var advance = playAll && state.scene < storyNow.scenes.length - 1;
         stopNarration();
+        if (advance) {
+          state.scene++;
+          state.visited[state.story + '-' + state.scene] = true;
+          render();
+          playAllTimer = setTimeout(function () {
+            playAllTimer = null;
+            if (playAll) playSentence(audioUrl(sentenceId()), false);
+          }, 450);
+        } else if (playAll) {
+          setPlayAll(false);
+        }
       }
       function playSentence(url, isRetry) {
         stopNarration();
@@ -2179,6 +2672,7 @@ var AUDIO_DATA = {
       function goTo(i) {
         var story = STORIES[state.story];
         if (i < 0 || i >= story.scenes.length) return;
+        setPlayAll(false);
         stopNarration();
         state.scene = i;
         state.visited[state.story + '-' + i] = true;
@@ -2187,6 +2681,7 @@ var AUDIO_DATA = {
       function loadStory(id) {
         if (!STORIES[id]) return;
         if (id === state.story) return;
+        setPlayAll(false);
         stopNarration();
         state.story = id;
         state.scene = 0;
@@ -2274,6 +2769,7 @@ var AUDIO_DATA = {
       /* ============ 이벤트 ============ */
       document.querySelectorAll('.lvl-btn').forEach(function (b) {
         b.addEventListener('click', function () {
+          setPlayAll(false);
           stopNarration();
           state.level = Number(b.getAttribute('data-level'));
           render();
@@ -2282,6 +2778,10 @@ var AUDIO_DATA = {
       $('prev-btn').addEventListener('click', function () { goTo(state.scene - 1); });
       $('next-btn').addEventListener('click', function () { goTo(state.scene + 1); });
       $('listen-btn').addEventListener('click', speak);
+      $('playall-btn').addEventListener('click', function () {
+        if (playAll) { setPlayAll(false); stopNarration(); }
+        else { setPlayAll(true); playSentence(audioUrl(sentenceId()), false); }
+      });
       $('guide-close').addEventListener('click', closeGuide);
       $('guide-close-bottom').addEventListener('click', closeGuide);
       $('guide-backdrop').addEventListener('click', closeGuide);
