@@ -1,0 +1,16 @@
+name: move-index
+on: workflow_dispatch
+permissions:
+  contents: write
+jobs:
+  move:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          mv space-2.html index.html
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git add -A
+          git commit -m "Replace index.html (darker select text)"
+          git push
